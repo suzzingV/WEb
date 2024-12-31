@@ -28,6 +28,12 @@ public class WebAuthnService {
 
     @Value( "${webauthn.rp}")
     private String rp;
+    @Value( "${webauthn.authenticatorSelection.authenticatorAttachment}")
+    private String authenticatorAttachment;
+    @Value("${webauthn.authenticatorSelection.requireResidentKey}")
+    private boolean requireResidentKey;
+    @Value("${webauthn.authenticatorSelection.userVerification}")
+    private String userVerification;
 
     private final static String CHALLENGE_PREFIX = "challenge_";
     private final static Duration CHALLENGE_DURATION = Duration.ofMinutes(3);
@@ -42,6 +48,9 @@ public class WebAuthnService {
                 .rp(rp)
                 .user(user)
                 .pubKeyCredParams(pubKeyCredParams)
+                .authenticatorAttachment(authenticatorAttachment)
+                .requireResidentKey(requireResidentKey)
+                .userVerification(userVerification)
                 .build();
     }
 

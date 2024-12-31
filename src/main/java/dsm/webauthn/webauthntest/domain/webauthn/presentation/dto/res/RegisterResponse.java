@@ -18,4 +18,10 @@ public class RegisterResponse {
     private User user;
 
     private List<PubKeyCredParam> pubKeyCredParams;
+
+    private String authenticatorAttachment;
+
+    private boolean requireResidentKey;
+
+    private String userVerification;
 }
