@@ -34,6 +34,12 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     //REDIS
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.14.1'
+    implementation 'com.webauthn4j:webauthn4j-core:0.28.3.RELEASE'
+
+
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
