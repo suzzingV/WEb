@@ -121,6 +121,9 @@ public class WebAuthnService {
             throw new WebAuthnException(ErrorCode.PARSING_ERROR);
         }
 
+        credentialRepository.findByUserId(userId)
+                .ifPresent(credentialRepository::delete);
+
         Credential credential = Credential.builder()
                 .publicKey(publicKeyJson)
                 .userId(userId)
