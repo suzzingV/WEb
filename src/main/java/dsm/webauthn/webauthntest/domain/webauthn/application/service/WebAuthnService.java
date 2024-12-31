@@ -2,11 +2,8 @@ package dsm.webauthn.webauthntest.domain.webauthn.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-import com.fasterxml.jackson.databind.ser.Serializers;
 import com.webauthn4j.WebAuthnManager;
 import com.webauthn4j.converter.exception.DataConversionException;
-import com.webauthn4j.converter.jackson.WebAuthnJSONModule;
 import com.webauthn4j.data.PublicKeyCredentialParameters;
 import com.webauthn4j.data.PublicKeyCredentialType;
 import com.webauthn4j.data.RegistrationData;
@@ -19,13 +16,14 @@ import com.webauthn4j.server.ServerProperty;
 import com.webauthn4j.verifier.exception.VerificationException;
 import dsm.webauthn.webauthntest.domain.user.domain.entity.User;
 import dsm.webauthn.webauthntest.domain.user.infrastructure.UserRepository;
+import dsm.webauthn.webauthntest.domain.webauthn.application.dto.AllowCredential;
 import dsm.webauthn.webauthntest.domain.webauthn.domain.entity.Credential;
 import dsm.webauthn.webauthntest.domain.webauthn.domain.entity.PubKeyCredParam;
 import dsm.webauthn.webauthntest.domain.webauthn.exception.WebAuthnException;
 import dsm.webauthn.webauthntest.domain.webauthn.infrastructure.CredentialRepository;
 import dsm.webauthn.webauthntest.domain.webauthn.infrastructure.PubKeyCredParamRepository;
-import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.req.RegisterVerificationRequest;
-import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.RegisterInitResponse;
+import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.AuthInfoResponse;
+import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.RegisterInfoResponse;
 import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.RegisterVerificationResponse;
 import dsm.webauthn.webauthntest.domain.webauthn.util.Base64UrlUtil;
 import dsm.webauthn.webauthntest.domain.webauthn.util.ChallengeUtil;
@@ -37,12 +35,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.PublicKey;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 @Transactional
@@ -71,16 +66,18 @@ public class WebAuthnService {
     private boolean userVerificationRequired;
     @Value("${webauthn.authenticatorSelection.userPresenceRequired}")
     private boolean userPresenceRequired;
+    @Value("${webauthn.pub-key-cred-param.type}")
+    private String pubKeyCredParamType;
 
     private final static String CHALLENGE_PREFIX = "challenge_";
     private final static Duration CHALLENGE_DURATION = Duration.ofMinutes(3);
 
-    public RegisterInitResponse init(Long userId) {
+    public RegisterInfoResponse getRegistrationInfo(Long userId) {
         User user = findUserById(userId);
         String challenge = generateAndEncodeChallenge(userId);
         List<PubKeyCredParam> pubKeyCredParams = pubKeyCredParamRepository.findAll();
 
-        return RegisterInitResponse.builder()
+        return RegisterInfoResponse.builder()
                 .challenge(challenge)
                 .rp(rp)
                 .user(user)
@@ -105,6 +102,28 @@ public class WebAuthnService {
         return RegisterVerificationResponse.builder()
                 .userId(userId)
                 .build();
+    }
+
+    public AuthInfoResponse getAuthenticationInfo(Long userId) {
+        User user = findUserById(userId);
+        String challenge = generateAndEncodeChallenge(userId);
+        List<AllowCredential> allowCredentials = generateAllowCredentials(userId);
+
+        return AuthInfoResponse.builder()
+                .challenge(challenge)
+                .allowCredentials(allowCredentials)
+                .userVerification(userVerification)
+                .build();
+    }
+
+    private List<AllowCredential> generateAllowCredentials(Long userId) {
+        return credentialRepository.findByUserId(userId)
+                .map(credential -> {
+                    return AllowCredential.builder()
+                            .type(pubKeyCredParamType)
+                            .id(credential.getCredentialId())
+                            .build();
+                }).stream().toList();
     }
 
     private void saveCredential(Long userId, RegistrationData registrationData) {
