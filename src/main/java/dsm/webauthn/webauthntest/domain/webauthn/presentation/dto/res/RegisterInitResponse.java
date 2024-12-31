@@ -9,7 +9,7 @@ import java.util.List;
 
 @Getter
 @Builder
-public class RegisterResponse {
+public class RegisterInitResponse {
 
     private String challenge;
 

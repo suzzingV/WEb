@@ -10,12 +10,12 @@ import java.util.Base64;
 import java.util.UUID;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public class ChallengeUtil {
+public class Base64UrlUtil {
 
-    public static byte[] generateChallenge() {
-        UUID uuid = UUID.randomUUID();
-        long hi = uuid.getMostSignificantBits();
-        long lo = uuid.getLeastSignificantBits();
-        return ByteBuffer.allocate(16).putLong(hi).putLong(lo).array();
+    public static String toBase64Url(byte[] data) {
+        if (data == null || data.length == 0) {
+            throw new WebAuthnException(ErrorCode.CHALLENGE_ENCODING_ERROR);
+        }
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(data);
     }
 }
