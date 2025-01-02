@@ -32,9 +32,15 @@ public class WebAuthnController {
         return ResponseEntity.ok(response);
     }
 
-//    @GetMapping("/auth/{userId}")
-//    public ResponseEntity<AuthInfoResponse> getAuthenticationInfo(@PathVariable Long userId) {
-//        AuthInfoResponse response = webAuthnService.getAuthenticationInfo(userId);
-//        return ResponseEntity.ok(response);
-//    }
+    @GetMapping("/auth/{userId}")
+    public ResponseEntity<AuthInfoResponse> getAuthenticationInfo(@PathVariable Long userId) {
+        AuthInfoResponse response = webAuthnService.getAuthenticationInfo(userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/auth/{userId}")
+    public ResponseEntity<RegisterVerificationResponse> authenticate(@PathVariable Long userId, @RequestBody String request) {
+        RegisterVerificationResponse response = webAuthnService.authenticate(userId, request);
+        return ResponseEntity.ok(response);
+    }
 }

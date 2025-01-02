@@ -16,6 +16,7 @@ public enum ErrorCode {
 
     // 404
     USER_NOT_FOUND(NOT_FOUND, "user을 찾을 수 없습니다."),
+    CREDENTIAL_NOT_FOUND(NOT_FOUND, "credential을 찾을 수 없습니다."),
 
     // 500
     PARSING_ERROR(INTERNAL_SERVER_ERROR, "데이터를 파싱하는 도중 에러가 발생했습니다."),

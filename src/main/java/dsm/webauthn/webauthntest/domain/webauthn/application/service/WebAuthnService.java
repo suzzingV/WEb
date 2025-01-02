@@ -4,11 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.webauthn4j.WebAuthnManager;
 import com.webauthn4j.converter.exception.DataConversionException;
-import com.webauthn4j.data.PublicKeyCredentialParameters;
-import com.webauthn4j.data.PublicKeyCredentialType;
-import com.webauthn4j.data.RegistrationData;
-import com.webauthn4j.data.RegistrationParameters;
+import com.webauthn4j.credential.CredentialRecord;
+import com.webauthn4j.credential.CredentialRecordImpl;
+import com.webauthn4j.data.*;
+import com.webauthn4j.data.attestation.AttestationObject;
 import com.webauthn4j.data.attestation.statement.COSEAlgorithmIdentifier;
+import com.webauthn4j.data.client.CollectedClientData;
 import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.Challenge;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
@@ -101,9 +102,9 @@ public class WebAuthnService {
         RegistrationParameters registrationParameters = getRegistrationParameters(userId);
         log.info("registrationParameters:" + registrationParameters.getServerProperty().getChallenge());
         log.info("같음?" + Arrays.equals(registrationData.getCollectedClientData().getChallenge().getValue(), registrationParameters.getServerProperty().getChallenge().getValue()));
-        verify(registrationData, registrationParameters);
+        verifyRegistration(registrationData, registrationParameters);
         log.info("verify success");
-        saveCredential(userId, registrationData);
+        saveCredential(userId, registrationData, request);
         log.info("saveCredential success");
 
         return RegisterVerificationResponse.builder()
@@ -111,17 +112,77 @@ public class WebAuthnService {
                 .build();
     }
 
-//    public AuthInfoResponse getAuthenticationInfo(Long userId) {
-//        User user = findUserById(userId);
-//        String challenge = generateAndEncodeChallenge(userId);
-//        List<AllowCredential> allowCredentials = generateAllowCredentials(userId);
-//
-//        return AuthInfoResponse.builder()
-//                .challenge(challenge)
-//                .allowCredentials(allowCredentials)
-//                .userVerification(userVerification)
-//                .build();
-//    }
+    public AuthInfoResponse getAuthenticationInfo(Long userId) {
+        String challenge = generateAndEncodeChallenge(userId);
+        List<AllowCredential> allowCredentials = generateAllowCredentials(userId);
+
+        return AuthInfoResponse.builder()
+                .challenge(challenge)
+                .allowCredentials(allowCredentials)
+                .userVerification(userVerification)
+                .build();
+    }
+
+    public RegisterVerificationResponse authenticate(Long userId, String request) {
+        AuthenticationData authenticationData = parseAuthenticationData(request);
+        AuthenticationParameters authenticationParameters = getAuthenticationParameters(userId);
+
+        verifyAuthentication(authenticationData, authenticationParameters);
+
+        return RegisterVerificationResponse.builder()
+                .userId(userId)
+                .build();
+// please update the counter of the authenticator record
+//        updateCounter(authenticationData.getCredentialId(), authenticationData.getAuthenticatorData().getSignCount());
+    }
+
+    private AuthenticationParameters getAuthenticationParameters(Long userId) {
+        ServerProperty serverProperty = getServerProperty(userId);
+// expectations
+        List<byte[]> allowCredentials = credentialRepository.findByUserId(userId)
+                .stream()
+                .map(credential -> Base64.getUrlDecoder().decode(credential.getCredentialId())).toList();
+        Credential credential = credentialRepository.findByUserId(userId)
+                .orElseThrow(() -> new WebAuthnException(ErrorCode.CREDENTIAL_NOT_FOUND));
+        RegistrationData registrationData = parseRequestToRegistrationData(credential.getRegistrationDataJSON());
+        CredentialRecord credentialRecord =
+                new CredentialRecordImpl( // You may create your own CredentialRecord implementation to save friendly authenticator name
+                        registrationData.getAttestationObject(),
+                        registrationData.getCollectedClientData(),
+                        registrationData.getClientExtensions(),
+                        registrationData.getTransports()
+                );
+// AuthenticationParameters 설정
+        AuthenticationParameters authenticationParameters =
+                new AuthenticationParameters(
+                        serverProperty,
+                        credentialRecord,
+                        allowCredentials,
+                        userVerificationRequired,
+                        userPresenceRequired
+                );
+        return authenticationParameters;
+    }
+
+    private AuthenticationData parseAuthenticationData(String request) {
+        AuthenticationData authenticationData;
+        try {
+            authenticationData = webAuthnManager.parseAuthenticationResponseJSON(request);
+        } catch (DataConversionException e) {
+            // If you would like to handle WebAuthn data structure parse error, please catch DataConversionException
+            throw new WebAuthnException(ErrorCode.PARSING_ERROR);
+        }
+        return authenticationData;
+    }
+
+    private void verifyAuthentication(AuthenticationData authenticationData, AuthenticationParameters authenticationParameters) {
+        try {
+            webAuthnManager.verify(authenticationData, authenticationParameters);
+        } catch (VerificationException e) {
+            // If you would like to handle WebAuthn data validation error, please catch ValidationException
+            throw new WebAuthnException(ErrorCode.VERIFICATION_ERROR);
+        }
+    }
 
     private List<AllowCredential> generateAllowCredentials(Long userId) {
         return credentialRepository.findByUserId(userId)
@@ -133,7 +194,7 @@ public class WebAuthnService {
                 }).stream().toList();
     }
 
-    private void saveCredential(Long userId, RegistrationData registrationData) {
+    private void saveCredential(Long userId, RegistrationData registrationData, String request) {
         String publicKeyJson;
         try {
 //            PublicKey publicKey = registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData().getCOSEKey().getPublicKey();
@@ -150,15 +211,31 @@ public class WebAuthnService {
         credentialRepository.findByUserId(userId)
                 .ifPresent(credentialRepository::delete);
 
+        CollectedClientData clientData = registrationData.getCollectedClientData();
+        String clientDataJSON = null;
+        try {
+            clientDataJSON = objectMapper.writeValueAsString(clientData);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        AttestationObject attestationObject = registrationData.getAttestationObject();
+        String attestationObjectJSON = null;
+        try {
+            attestationObjectJSON = objectMapper.writeValueAsString(attestationObject);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
         Credential credential = Credential.builder()
                 .publicKey(publicKeyJson)
                 .userId(userId)
                 .credentialId(com.webauthn4j.util.Base64UrlUtil.encodeToString(registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData().getCredentialId()))
+                .registrationDataJSON(request)
                 .build();
         credentialRepository.save(credential);
     }
 
-    private void verify(RegistrationData registrationData, RegistrationParameters registrationParameters) {
+    private void verifyRegistration(RegistrationData registrationData, RegistrationParameters registrationParameters) {
         try {
             log.info(registrationData.getAttestationObject().toString());
             webAuthnManager.verify(registrationData, registrationParameters);
