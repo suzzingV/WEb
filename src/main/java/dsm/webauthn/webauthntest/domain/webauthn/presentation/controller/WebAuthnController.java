@@ -14,14 +14,12 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/webauthn")
 @RequiredArgsConstructor
-@Slf4j
 public class WebAuthnController {
 
     private final WebAuthnService webAuthnService;
 
     @GetMapping("/register/info/{userId}")
-    public ResponseEntity<?> getRegistrationInfo(@PathVariable Long userId, HttpServletRequest request) {
-        log.info("??");
+    public ResponseEntity<?> getRegistrationInfo(@PathVariable Long userId) {
         RegisterInfoResponse response = webAuthnService.getRegistrationInfo(userId);
         return ResponseEntity.ok(response);
     }
