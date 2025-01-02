@@ -4,19 +4,24 @@ import dsm.webauthn.webauthntest.domain.webauthn.application.service.WebAuthnSer
 import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.AuthInfoResponse;
 import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.RegisterInfoResponse;
 import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.RegisterVerificationResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/webauthn")
 @RequiredArgsConstructor
+@Slf4j
 public class WebAuthnController {
 
     private final WebAuthnService webAuthnService;
 
-    @GetMapping("/register/{userId}")
-    public ResponseEntity<RegisterInfoResponse> getRegistrationInfo(@PathVariable Long userId) {
+    @GetMapping("/register/info/{userId}")
+    public ResponseEntity<?> getRegistrationInfo(@PathVariable Long userId, HttpServletRequest request) {
+        log.info("??");
         RegisterInfoResponse response = webAuthnService.getRegistrationInfo(userId);
         return ResponseEntity.ok(response);
     }
@@ -27,9 +32,9 @@ public class WebAuthnController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/auth/{userId}")
-    public ResponseEntity<AuthInfoResponse> getAuthenticationInfo(@PathVariable Long userId) {
-        AuthInfoResponse response = webAuthnService.getAuthenticationInfo(userId);
-        return ResponseEntity.ok(response);
-    }
+//    @GetMapping("/auth/{userId}")
+//    public ResponseEntity<AuthInfoResponse> getAuthenticationInfo(@PathVariable Long userId) {
+//        AuthInfoResponse response = webAuthnService.getAuthenticationInfo(userId);
+//        return ResponseEntity.ok(response);
+//    }
 }

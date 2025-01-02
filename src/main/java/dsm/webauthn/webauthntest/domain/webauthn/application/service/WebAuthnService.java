@@ -13,6 +13,7 @@ import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.Challenge;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
+import com.webauthn4j.util.Base64UrlUtil;
 import com.webauthn4j.verifier.exception.VerificationException;
 import dsm.webauthn.webauthntest.domain.user.domain.entity.User;
 import dsm.webauthn.webauthntest.domain.user.infrastructure.UserRepository;
@@ -25,7 +26,6 @@ import dsm.webauthn.webauthntest.domain.webauthn.infrastructure.PubKeyCredParamR
 import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.AuthInfoResponse;
 import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.RegisterInfoResponse;
 import dsm.webauthn.webauthntest.domain.webauthn.presentation.dto.res.RegisterVerificationResponse;
-import dsm.webauthn.webauthntest.domain.webauthn.util.Base64UrlUtil;
 import dsm.webauthn.webauthntest.domain.webauthn.util.ChallengeUtil;
 import dsm.webauthn.webauthntest.global.common.redis.RedisService;
 import dsm.webauthn.webauthntest.global.response.properties.ErrorCode;
@@ -36,8 +36,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+
+import static dsm.webauthn.webauthntest.global.common.redis.RedisService.NOT_EXIST;
 
 @Service
 @Transactional
@@ -73,6 +76,7 @@ public class WebAuthnService {
     private final static Duration CHALLENGE_DURATION = Duration.ofMinutes(3);
 
     public RegisterInfoResponse getRegistrationInfo(Long userId) {
+        log.info("등록 함수 호출");
         User user = findUserById(userId);
         String challenge = generateAndEncodeChallenge(userId);
         List<PubKeyCredParam> pubKeyCredParams = pubKeyCredParamRepository.findAll();
@@ -90,10 +94,13 @@ public class WebAuthnService {
 
     public RegisterVerificationResponse register(Long userId, String request) {
         log.info(request);
+        // 인증기에 저장된 데이터
         RegistrationData registrationData = parseRequestToRegistrationData(request);
-        log.info("registrationData:");
+        log.info("registrationData:" + registrationData.getCollectedClientData().getChallenge());
+        // 서버에 저장된 데이터
         RegistrationParameters registrationParameters = getRegistrationParameters(userId);
-        log.info("registrationParameters:");
+        log.info("registrationParameters:" + registrationParameters.getServerProperty().getChallenge());
+        log.info("같음?" + Arrays.equals(registrationData.getCollectedClientData().getChallenge().getValue(), registrationParameters.getServerProperty().getChallenge().getValue()));
         verify(registrationData, registrationParameters);
         log.info("verify success");
         saveCredential(userId, registrationData);
@@ -104,17 +111,17 @@ public class WebAuthnService {
                 .build();
     }
 
-    public AuthInfoResponse getAuthenticationInfo(Long userId) {
-        User user = findUserById(userId);
-        String challenge = generateAndEncodeChallenge(userId);
-        List<AllowCredential> allowCredentials = generateAllowCredentials(userId);
-
-        return AuthInfoResponse.builder()
-                .challenge(challenge)
-                .allowCredentials(allowCredentials)
-                .userVerification(userVerification)
-                .build();
-    }
+//    public AuthInfoResponse getAuthenticationInfo(Long userId) {
+//        User user = findUserById(userId);
+//        String challenge = generateAndEncodeChallenge(userId);
+//        List<AllowCredential> allowCredentials = generateAllowCredentials(userId);
+//
+//        return AuthInfoResponse.builder()
+//                .challenge(challenge)
+//                .allowCredentials(allowCredentials)
+//                .userVerification(userVerification)
+//                .build();
+//    }
 
     private List<AllowCredential> generateAllowCredentials(Long userId) {
         return credentialRepository.findByUserId(userId)
@@ -146,7 +153,7 @@ public class WebAuthnService {
         Credential credential = Credential.builder()
                 .publicKey(publicKeyJson)
                 .userId(userId)
-                .credentialId(Base64UrlUtil.toBase64Url(registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData().getCredentialId()))
+                .credentialId(com.webauthn4j.util.Base64UrlUtil.encodeToString(registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData().getCredentialId()))
                 .build();
         credentialRepository.save(credential);
     }
@@ -205,7 +212,7 @@ public class WebAuthnService {
         RegistrationData registrationData;
         try {
             registrationData = webAuthnManager.parseRegistrationResponseJSON(request);
-            log.info("challenge: " + Base64UrlUtil.toBase64Url(registrationData.getCollectedClientData().getChallenge().getValue()));
+            log.info("challenge: " + com.webauthn4j.util.Base64UrlUtil.encodeToString(registrationData.getCollectedClientData().getChallenge().getValue()));
         } catch (DataConversionException e) {
             // If you would like to handle WebAuthn data structure parse error, please catch DataConversionException
             throw new WebAuthnException(ErrorCode.PARSING_ERROR);
@@ -214,10 +221,18 @@ public class WebAuthnService {
     }
 
     private String generateAndEncodeChallenge(Long userId) {
-        byte[] challenge = ChallengeUtil.generateChallenge();
-        String encodedChallenge = Base64UrlUtil.toBase64Url(challenge);
-        redisService.setValue(CHALLENGE_PREFIX + userId, encodedChallenge, CHALLENGE_DURATION);
-        return encodedChallenge;
+        log.info("챌린지 생성");
+        String savedChallenge = redisService.getStrValue(CHALLENGE_PREFIX + userId);
+        if(savedChallenge.equals(NOT_EXIST)) {
+            log.info("없음");
+            byte[] challenge = ChallengeUtil.generateChallenge();
+            String encodedChallenge = Base64UrlUtil.encodeToString(challenge);
+            redisService.setValue(CHALLENGE_PREFIX + userId, encodedChallenge, CHALLENGE_DURATION);
+            log.info("server challenge:" + encodedChallenge);
+            return encodedChallenge;
+        }
+        log.info("savedChallenge: " + savedChallenge);
+        return savedChallenge;
     }
 
     private User findUserById(Long userId) {
