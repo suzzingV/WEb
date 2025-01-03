@@ -77,35 +77,29 @@ public class WebAuthnService {
     private final static Duration CHALLENGE_DURATION = Duration.ofMinutes(3);
 
     public RegisterInfoResponse getRegistrationInfo(Long userId) {
-        log.info("등록 함수 호출");
         User user = findUserById(userId);
+        // challenge 생성
         String challenge = generateAndEncodeChallenge(userId);
-        List<PubKeyCredParam> pubKeyCredParams = pubKeyCredParamRepository.findAll();
+        List<PubKeyCredParam> pubKeyCredParams = pubKeyCredParamRepository.findAll(); //  ECDSA (ES256), RSA (RS256)
 
         return RegisterInfoResponse.builder()
                 .challenge(challenge)
-                .rp(rp)
+                .rp(rp) // 서비스 제공자
                 .user(user)
                 .pubKeyCredParams(pubKeyCredParams)
-                .authenticatorAttachment(authenticatorAttachment)
-                .requireResidentKey(requireResidentKey)
-                .userVerification(userVerification)
+                .authenticatorAttachment(authenticatorAttachment) // 인증기의 종류 지정
+                .requireResidentKey(requireResidentKey) // 인증기 내에 키를 저장할지 (서버에 공개키 저장)
+                .userVerification(userVerification) // 사용자 검증 요구 (추가 인증)
                 .build();
     }
 
     public RegisterVerificationResponse register(Long userId, String request) {
-        log.info(request);
         // 인증기에 저장된 데이터
         RegistrationData registrationData = parseRequestToRegistrationData(request);
-        log.info("registrationData:" + registrationData.getCollectedClientData().getChallenge());
         // 서버에 저장된 데이터
         RegistrationParameters registrationParameters = getRegistrationParameters(userId);
-        log.info("registrationParameters:" + registrationParameters.getServerProperty().getChallenge());
-        log.info("같음?" + Arrays.equals(registrationData.getCollectedClientData().getChallenge().getValue(), registrationParameters.getServerProperty().getChallenge().getValue()));
         verifyRegistration(registrationData, registrationParameters);
-        log.info("verify success");
         saveCredential(userId, registrationData, request);
-        log.info("saveCredential success");
 
         return RegisterVerificationResponse.builder()
                 .userId(userId)
@@ -139,9 +133,11 @@ public class WebAuthnService {
     private AuthenticationParameters getAuthenticationParameters(Long userId) {
         ServerProperty serverProperty = getServerProperty(userId);
 // expectations
+        // user의 유효한 credential Id
         List<byte[]> allowCredentials = credentialRepository.findByUserId(userId)
                 .stream()
                 .map(credential -> Base64.getUrlDecoder().decode(credential.getCredentialId())).toList();
+        // credential 정보(공개 키, 등록 정보)
         Credential credential = credentialRepository.findByUserId(userId)
                 .orElseThrow(() -> new WebAuthnException(ErrorCode.CREDENTIAL_NOT_FOUND));
         RegistrationData registrationData = parseRequestToRegistrationData(credential.getRegistrationDataJSON());
@@ -197,12 +193,6 @@ public class WebAuthnService {
     private void saveCredential(Long userId, RegistrationData registrationData, String request) {
         String publicKeyJson;
         try {
-//            PublicKey publicKey = registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData().getCOSEKey().getPublicKey();
-//
-//            Map<String, String> keyDetails = new HashMap<>();
-//            keyDetails.put("algorithm", publicKey.getAlgorithm());
-//            keyDetails.put("format", publicKey.getFormat());
-//            keyDetails.put("key", Base64.getEncoder().encodeToString(publicKey.getEncoded()));
             publicKeyJson = objectMapper.writeValueAsString(registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData().getCOSEKey());
         } catch (JsonProcessingException e) {
             throw new WebAuthnException(ErrorCode.PARSING_ERROR);
@@ -237,28 +227,18 @@ public class WebAuthnService {
 
     private void verifyRegistration(RegistrationData registrationData, RegistrationParameters registrationParameters) {
         try {
-            log.info(registrationData.getAttestationObject().toString());
             webAuthnManager.verify(registrationData, registrationParameters);
         } catch (VerificationException e) {
-            log.error("Verification failed: {}", e.getMessage());
-            log.debug("Challenge: {}", registrationParameters.getServerProperty().getChallenge());
-            log.debug("RP ID: {}", registrationParameters.getServerProperty().getRpId());
-            log.debug("ClientDataJSON: {}", new String(Base64.getUrlDecoder().decode(registrationData.getCollectedClientDataBytes())));
-            log.debug("AuthenticatorData: {}", registrationData.getAttestationObject().getAuthenticatorData());
-            // If you would like to handle WebAuthn data verification error, please catch VerificationException
             throw new WebAuthnException(ErrorCode.VERIFICATION_ERROR);
         }
     }
 
     private RegistrationParameters getRegistrationParameters(Long userId) {
         ServerProperty serverProperty = getServerProperty(userId);
-        log.info("serverProperty: " + serverProperty.getChallenge().getValue());
 
 // expectations
         List<PublicKeyCredentialParameters> pubKeyCredParams = getPubKeyCredParams();
-        log.info("pubKeyCredParams: " + pubKeyCredParams);
         RegistrationParameters registrationParameters = new RegistrationParameters(serverProperty, pubKeyCredParams, userVerificationRequired, userPresenceRequired);
-        log.info("registrationParameters: " + registrationParameters);
         return registrationParameters;
     }
 
@@ -289,7 +269,6 @@ public class WebAuthnService {
         RegistrationData registrationData;
         try {
             registrationData = webAuthnManager.parseRegistrationResponseJSON(request);
-            log.info("challenge: " + com.webauthn4j.util.Base64UrlUtil.encodeToString(registrationData.getCollectedClientData().getChallenge().getValue()));
         } catch (DataConversionException e) {
             // If you would like to handle WebAuthn data structure parse error, please catch DataConversionException
             throw new WebAuthnException(ErrorCode.PARSING_ERROR);
@@ -298,17 +277,14 @@ public class WebAuthnService {
     }
 
     private String generateAndEncodeChallenge(Long userId) {
-        log.info("챌린지 생성");
         String savedChallenge = redisService.getStrValue(CHALLENGE_PREFIX + userId);
         if(savedChallenge.equals(NOT_EXIST)) {
-            log.info("없음");
             byte[] challenge = ChallengeUtil.generateChallenge();
             String encodedChallenge = Base64UrlUtil.encodeToString(challenge);
+            // Redis에 Chellenge 값 저장
             redisService.setValue(CHALLENGE_PREFIX + userId, encodedChallenge, CHALLENGE_DURATION);
-            log.info("server challenge:" + encodedChallenge);
             return encodedChallenge;
         }
-        log.info("savedChallenge: " + savedChallenge);
         return savedChallenge;
     }
 

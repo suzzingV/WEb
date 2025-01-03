@@ -18,24 +18,28 @@ public class WebAuthnController {
 
     private final WebAuthnService webAuthnService;
 
+    // 등록 정보 요청
     @GetMapping("/register/info/{userId}")
     public ResponseEntity<?> getRegistrationInfo(@PathVariable Long userId) {
         RegisterInfoResponse response = webAuthnService.getRegistrationInfo(userId);
         return ResponseEntity.ok(response);
     }
 
+    // 등록
     @PostMapping("/register/{userId}")
     public ResponseEntity<RegisterVerificationResponse> register(@PathVariable Long userId, @RequestBody String request) {
         RegisterVerificationResponse response = webAuthnService.register(userId, request);
         return ResponseEntity.ok(response);
     }
 
+    // 인증 정보 요청
     @GetMapping("/auth/{userId}")
     public ResponseEntity<AuthInfoResponse> getAuthenticationInfo(@PathVariable Long userId) {
         AuthInfoResponse response = webAuthnService.getAuthenticationInfo(userId);
         return ResponseEntity.ok(response);
     }
 
+    // 인증
     @PostMapping("/auth/{userId}")
     public ResponseEntity<RegisterVerificationResponse> authenticate(@PathVariable Long userId, @RequestBody String request) {
         RegisterVerificationResponse response = webAuthnService.authenticate(userId, request);
